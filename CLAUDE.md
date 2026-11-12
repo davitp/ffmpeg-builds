@@ -27,7 +27,9 @@ It prints `license gate passed` and writes `dist/ffmpeg-<ver>-b<n>-darwin-<arch>
 
 ## Windows and Linux
 
-Not built here; an upstream LGPL archive is re-hosted. Put the chosen upstream URL and SHA256 in `recipe/rehost.env` (same FFmpeg major version, an `lgpl` variant), then `recipe/rehost.sh <win32-x64|linux-x64> <url> <sha256>` verifies it, runs the gate on the binaries' configuration string and repacks it. Empty values mean the platform is skipped.
+Not built here: an upstream LGPL build (BtbN/FFmpeg-Builds, static `win64-lgpl` and `linux64-lgpl` of the same FFmpeg major version) is re-hosted unchanged. `recipe/rehost.env` pins it: the archive URL and SHA256 for each platform, plus the SHA256-pinned source of those binaries (the FFmpeg commit named in the archive file name, and BtbN's build scripts at the same tag), which `make-manifest.sh` puts in the release's source bundle.
+
+To bump: pick an immutable `autobuild-YYYY-MM-DD-HH-MM` release (never the rolling `latest`), choose the `n<major>.<minor>.<patch>-<commits>-g<hash>` assets, hash what you download yourself (`gh api repos/BtbN/FFmpeg-Builds/releases/tags/<tag> --jq '.assets[] | .name + " " + .digest'` is a cross-check, not a substitute), and update all six values (two URLs, two hashes, the commit tarball and the builder tarball, each with URL, file name and hash). Then `recipe/rehost.sh <win32-x64|linux-x64> <url> <sha256>` verifies, runs the gate and repacks. Bump `BUILD_NUMBER` for the release. These builds are LGPL version 3 and link many more libraries than the macOS build; do not describe them as the same.
 
 ## Release
 
@@ -37,4 +39,4 @@ Not built here; an upstream LGPL archive is re-hosted. Put the chosen upstream U
 
 ## Unverified
 
-The x64 build (native Intel runner), Windows and Linux re-hosting and the workflow have not run yet; fix what the first run shows.
+The x64 build (native Intel runner) and the workflow have not run yet; fix what the first run shows. The re-hosting scripts ran locally on macOS for both platforms. GitHub's generated source archives (`archive/<tag or commit>.tar.gz`) are pinned by hash, but GitHub does not promise byte-identical regeneration; if a hash ever stops matching, re-download, compare the contents and re-pin.

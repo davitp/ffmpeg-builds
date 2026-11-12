@@ -5,7 +5,7 @@ LGPL-only `ffmpeg` and `ffprobe` builds, made from pinned sources and published 
 - `recipe/versions.env` pins FFmpeg and its libraries (dav1d, libvpx, opus) by URL and SHA256.
 - `recipe/configure-flags.txt` is the FFmpeg configure line: `--disable-gpl --disable-nonfree`, VideoToolbox and AudioToolbox, dav1d, libvpx, libopus, static.
 - `recipe/build-macos.sh <arm64|x64>` builds for macOS (needs `pkg-config meson ninja nasm` and the Xcode command line tools).
-- `recipe/rehost.sh` re-hosts a pinned upstream LGPL archive for Windows and Linux (`recipe/rehost.env`).
+- `recipe/rehost.sh` re-hosts a pinned upstream LGPL archive for Windows and Linux (`recipe/rehost.env`: BtbN autobuild `autobuild-2026-11-12-15-40`, FFmpeg n9.0.2-57-gd838f9f9ae, LGPL version 3), with the matching source pinned beside it.
 - `recipe/license-gate.sh` fails a build that is GPL or nonfree, or that links outside the system.
 - `recipe/make-manifest.sh` writes `dist/manifest.json`: every archive and the source bundle, pinned by SHA256.
 

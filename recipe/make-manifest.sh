@@ -12,15 +12,27 @@ source "$HERE/versions.env"
 TAG="ffmpeg-$FFMPEG_VERSION-b$BUILD_NUMBER"
 SOURCE="$ROOT/dist/$TAG-source.tar.gz"
 
+# shellcheck source=rehost.env
+source "$HERE/rehost.env"
 "$HERE/fetch-sources.sh"
-tar -czf "$SOURCE" -C "$ROOT" recipe "cache/$FFMPEG_FILE" "cache/$DAV1D_FILE" "cache/$LIBVPX_FILE" "cache/$OPUS_FILE"
+SOURCES=("cache/$FFMPEG_FILE" "cache/$DAV1D_FILE" "cache/$LIBVPX_FILE" "cache/$OPUS_FILE")
+if [ -n "$UPSTREAM_FFMPEG_URL" ]; then
+  SOURCES+=("cache/$UPSTREAM_FFMPEG_FILE" "cache/$UPSTREAM_BUILDER_FILE")
+fi
+tar -czf "$SOURCE" -C "$ROOT" recipe "${SOURCES[@]}"
 
-node --input-type=module - "$ROOT/dist" "$BASE" "$TAG" "$FFMPEG_VERSION" "$HERE/configure-flags.txt" "$SOURCE" <<'NODE'
+node --input-type=module - "$ROOT/dist" "$BASE" "$TAG" "$FFMPEG_VERSION" "$HERE/configure-flags.txt" "$SOURCE" "$HERE/rehost.env" <<'NODE'
 import { createHash } from 'node:crypto'
 import { readdirSync, readFileSync, writeFileSync } from 'node:fs'
 import { basename, join } from 'node:path'
 
-const [dist, base, tag, version, flagsFile, source] = process.argv.slice(2)
+const [dist, base, tag, version, flagsFile, source, rehostFile] = process.argv.slice(2)
+const rehost = Object.fromEntries(
+  readFileSync(rehostFile, 'utf8')
+    .split('\n')
+    .filter((line) => /^[A-Z0-9_]+=/.test(line))
+    .map((line) => [line.slice(0, line.indexOf('=')), line.slice(line.indexOf('=') + 1)])
+)
 const sha = (file) => createHash('sha256').update(readFileSync(file)).digest('hex')
 const archives = {}
 for (const file of readdirSync(dist)) {
@@ -38,6 +50,14 @@ const manifest = {
   ffmpegVersion: version,
   archives,
   source: { url: `${base}/${basename(source)}`, sha256: sha(source) },
+  rehosted: Object.fromEntries(
+    [
+      ['win32-x64', 'WIN32_X64'],
+      ['linux-x64', 'LINUX_X64']
+    ]
+      .filter(([platform, key]) => archives[platform] && rehost[`${key}_URL`])
+      .map(([platform, key]) => [platform, { url: rehost[`${key}_URL`], sha256: rehost[`${key}_SHA256`] }])
+  ),
   configure: readFileSync(flagsFile, 'utf8').split('\n').filter(Boolean),
   ci: process.env.GITHUB_RUN_ID ?? null
 }

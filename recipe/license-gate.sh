@@ -24,7 +24,7 @@ for name in ffmpeg ffprobe; do
   fi
   checked=$((checked + 1))
 
-  if ! grep -a -q -e '--disable-gpl' -e '--disable-nonfree' "$bin" && ! grep -a -q 'configuration:' "$bin"; then
+  if ! grep -a -q -e '--prefix=' "$bin"; then
     echo "GATE FAIL: $name has no readable configuration string" >&2
     status=1
   fi
