@@ -1,0 +1,102 @@
+name: build
+on:
+  workflow_dispatch:
+  push:
+    tags: ['ffmpeg-*']
+
+permissions:
+  contents: read
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  plan:
+    runs-on: ubuntu-latest
+    outputs:
+      tag: ${{ steps.tag.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v7
+      - id: tag
+        run: |
+          set -euo pipefail
+          source recipe/versions.env
+          tag="ffmpeg-${FFMPEG_VERSION}-b${BUILD_NUMBER}"
+          if [ "${GITHUB_REF_TYPE}" = tag ] && [ "${GITHUB_REF_NAME}" != "$tag" ]; then
+            echo "tag ${GITHUB_REF_NAME} does not match recipe/versions.env (${tag})" >&2
+            exit 1
+          fi
+          echo "tag=$tag" >> "$GITHUB_OUTPUT"
+
+  macos:
+    needs: plan
+    strategy:
+      matrix:
+        include:
+          - { runner: macos-15, arch: arm64 }
+          - { runner: macos-15-intel, arch: x64 }
+    runs-on: ${{ matrix.runner }}
+    steps:
+      - uses: actions/checkout@v7
+      - run: brew install pkg-config meson ninja nasm
+      - run: recipe/build-macos.sh ${{ matrix.arch }}
+      - uses: actions/upload-artifact@v7
+        with:
+          name: darwin-${{ matrix.arch }}
+          path: dist/*.tar.gz
+
+  rehost:
+    needs: plan
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - { platform: win32-x64, url_var: WIN32_X64_URL, sha_var: WIN32_X64_SHA256 }
+          - { platform: linux-x64, url_var: LINUX_X64_URL, sha_var: LINUX_X64_SHA256 }
+    steps:
+      - uses: actions/checkout@v7
+      - env:
+          PLATFORM: ${{ matrix.platform }}
+          URL_VAR: ${{ matrix.url_var }}
+          SHA_VAR: ${{ matrix.sha_var }}
+        run: |
+          set -euo pipefail
+          source recipe/rehost.env
+          url="${!URL_VAR}"
+          sha="${!SHA_VAR}"
+          if [ -z "$url" ] || [ -z "$sha" ]; then
+            echo "no upstream archive pinned for $PLATFORM in recipe/rehost.env; skipping"
+            exit 0
+          fi
+          recipe/rehost.sh "$PLATFORM" "$url" "$sha"
+      - uses: actions/upload-artifact@v7
+        with:
+          name: ${{ matrix.platform }}
+          path: dist/*.tar.gz
+          if-no-files-found: ignore
+
+  release:
+    if: github.ref_type == 'tag'
+    needs: [plan, macos, rehost]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/download-artifact@v8
+        with:
+          path: dist
+          merge-multiple: true
+      - env:
+          TAG: ${{ needs.plan.outputs.tag }}
+          REPOSITORY: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+          recipe/make-manifest.sh "https://github.com/${REPOSITORY}/releases/download/${TAG}"
+      - env:
+          TAG: ${{ needs.plan.outputs.tag }}
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          gh release create "$TAG" dist/* --title "$TAG" --notes "LGPL-only FFmpeg build. manifest.json pins every archive and the source bundle by SHA256."
